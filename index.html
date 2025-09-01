@@ -5,61 +5,121 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Signature</title>
     <style>
+        /* Make page fit viewport and remove browser scrollbar per request */
+        html, body {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            overflow: hidden; /* no outer page scroll */
+            box-sizing: border-box;
+            background: #f8f9fa;
+        }
         .main{
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%,-50%);
+            position: relative;
+            width: 100%;
+            max-width: 960px;
+            margin: 0 auto;
+            padding: 18px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: #ffffff; /* card */
+            border-radius: 10px;
+            box-shadow: 0 6px 18px rgba(24,24,24,0.06);
+            height: 100vh; /* fill viewport to avoid outer scrolling */
+            box-sizing: border-box;
+        }
+        .title{
+            font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial;
+            font-size: 1.6rem;
+            margin: 6px 0 12px 0;
+            color: #222;
+            text-align: center;
+            letter-spacing: 0.4px;
+            width: 100%;
         }
         .canvas{
             border: 2px solid black;
+            width: 100%;
+            max-width: 900px;
+            /* use flex so canvas shrinks to fit the available space inside .main */
+            flex: 1 1 auto;
+            min-height: 120px;
+            display: block;
+            background: white;
+            align-self: stretch;
         }
         .top, .bottom{
             display: flex;
             flex-direction: row;
             justify-content: space-between;
-            margin: 20px 0 20px 0;
+            gap: 12px;
+            margin: 14px 0;
+            width: 100%;
+            max-width: 900px;
         }
         .block, input, select, button{
-            width: 80%;
+            width: 100%;
         }
-        .top>block{
-            margin: 10px;
+        .top > .block{
+            margin: 0;
+            flex: 1 1 0;
+            min-width: 120px;
         }
-        .bottom>button{
-            margin: 10px;
+        .bottom > button{
+            margin: 0;
+            flex: 1 1 0;
+            min-width: 120px;
         }
-        .block>p{
-            margin: 10px auto;
-            width: 50%;
+        .bottom{gap:10px}
+        .block > p{
+            margin: 10px 0 6px 0;
+            width: 100%;
+        }
+        @media (max-width: 700px){
+            .top, .bottom{
+                flex-direction: column;
+                align-items: stretch;
+            }
+            .canvas{
+                height: 50vh;
+            }
+        }
+
+        /* small polish for very narrow screens */
+        @media (max-width: 420px){
+            .title{ font-size: 1.25rem; }
+            .main{ padding: 12px; margin: 10px; }
+            .top > .block{ min-width: 80px; }
+            .bottom > button{ min-width: 0; }
         }
     </style>
      <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
 </head>
 <body>
     <div class="main">
+        <div class="title">Quicksign</div>
         <div class="top">
             <div class="block">
                 <p>Text color</p>
-                <input class="form-control" type="color" id="colorPicker"/> 
+                <input class="form-control" type="color" id="colorPicker" value="#000000"/> 
             </div>
             <div class="block">
                 <p>Background color</p>
-                <input class="form-control" type="color" id="canvasColor"/>
+                <input class="form-control" type="color" id="canvasColor" value="#ffffff"/>
             </div>
             <div class="block">
                 <p>Font size</p>
-                <select id="font-size">
-                    <option value="5">5px</option>
+                <select id="font-size" class="form-select">
+                    <option value="2">2px</option>
+                    <option value="5" selected>5px</option>
                     <option value="10">10px</option>
                     <option value="20">20px</option>
                     <option value="30">30px</option>
-                    <option value="40">40px</option>
                 </select>
             </div>
         </div>
-        <canvas class="canvas" id="myCanvas" width="800" height="500">
-        </canvas>
+        <canvas class="canvas" id="myCanvas" width="800" height="500"></canvas>
         <div class="bottom">
             <button type="button" class="btn btn-danger" id="clearButton">Clear</button>
             <button type="button" class="btn btn-success" id="saveButton">Save and Download</button>
@@ -77,7 +137,52 @@
         const ctx = canvas.getContext('2d');
 
         let isDrawing = false;
-        let lastX, lastY;
+        let lastX = 0, lastY = 0;
+
+        // initialize default styles
+        ctx.lineJoin = 'round';
+        ctx.lineCap = 'round';
+        ctx.strokeStyle = colorPicker.value;
+        ctx.fillStyle = canvasColor.value;
+        ctx.lineWidth = parseInt(fontSizePicker.value, 10) || 2;
+
+        // ensure canvas is sized properly for high DPI and responsive layout
+        function resizeCanvas(preserve = true){
+            const ratio = window.devicePixelRatio || 1;
+            // capture current image
+            let data = null;
+            if(preserve) try { data = canvas.toDataURL(); } catch(e) { data = null; }
+
+            // CSS size
+            const cssWidth = canvas.clientWidth;
+            const cssHeight = canvas.clientHeight;
+
+            // set actual pixel size
+            canvas.width = Math.max(1, Math.floor(cssWidth * ratio));
+            canvas.height = Math.max(1, Math.floor(cssHeight * ratio));
+
+            // set transform so drawing ops use CSS pixels
+            ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+
+            // redraw background
+            ctx.fillStyle = canvasColor.value || '#ffffff';
+            ctx.fillRect(0, 0, cssWidth, cssHeight);
+
+            // restore previous drawing if available
+            if(data){
+                const img = new Image();
+                img.src = data;
+                img.onload = () => {
+                    try{
+                        ctx.drawImage(img, 0, 0, cssWidth, cssHeight);
+                    }catch(e){ /* drawing may fail if data invalid */ }
+                }
+            }
+        }
+
+        // initial resize
+        window.addEventListener('load', ()=> resizeCanvas(false));
+        window.addEventListener('resize', ()=> resizeCanvas(true));
 
         colorPicker.addEventListener('change',(e)=>{
             ctx.strokeStyle = e.target.value;
@@ -86,45 +191,79 @@
 
         canvas.addEventListener('mousedown',(e)=>{
             isDrawing = true;
-            lastX = event.offsetX;
-            lastY = event.offsetY;
+            lastX = e.offsetX;
+            lastY = e.offsetY;
         })
 
         canvas.addEventListener('mousemove',(e)=>{
             if(isDrawing){
                 ctx.beginPath();
-                ctx.moveTo(lastX,lastY);
-                ctx.lineTo(event.offsetX,event.offsetY);
+                ctx.moveTo(lastX, lastY);
+                ctx.lineTo(e.offsetX, e.offsetY);
                 ctx.stroke();
 
-                lastX = event.offsetX;
-                lastY = event.offsetY;
+                lastX = e.offsetX;
+                lastY = e.offsetY;
             }
         })
 
-        canvas.addEventListener('mouseup',()=>{
-            isDrawing = false;
-        })
+        ['mouseup','mouseleave'].forEach(evt =>
+            canvas.addEventListener(evt, ()=>{ isDrawing = false; })
+        );
+
+        // support basic touch drawing
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            const t = e.touches[0];
+            lastX = t.clientX - rect.left;
+            lastY = t.clientY - rect.top;
+            isDrawing = true;
+        }, { passive: false });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            if(!isDrawing) return;
+            const rect = canvas.getBoundingClientRect();
+            const t = e.touches[0];
+            const x = t.clientX - rect.left;
+            const y = t.clientY - rect.top;
+            ctx.beginPath();
+            ctx.moveTo(lastX, lastY);
+            ctx.lineTo(x, y);
+            ctx.stroke();
+            lastX = x; lastY = y;
+        }, { passive: false });
 
         canvasColor.addEventListener('change',(e)=>{
+            // fill background using CSS pixels (ctx is scaled)
             ctx.fillStyle = e.target.value;
-            ctx.fillRect(0,0,800,500);
+            ctx.fillRect(0,0,canvas.clientWidth, canvas.clientHeight);
         })
 
         fontSizePicker.addEventListener('change',(e)=>{
-            ctx.lineWidth = e.target.value;
+            ctx.lineWidth = parseInt(e.target.value, 10) || 2;
         })
 
         clearButton.addEventListener('click',()=>{
-            ctx.clearRect(0,0,canvas.width,canvas.height);
+            ctx.clearRect(0,0,canvas.clientWidth, canvas.clientHeight);
+            // refill background
+            ctx.fillStyle = canvasColor.value || '#ffffff';
+            ctx.fillRect(0,0,canvas.clientWidth, canvas.clientHeight);
         })
 
         saveButton.addEventListener('click',()=>{
-            localStorage.setItem('canvasContents',canvas.toDataURL());
-            let link = document.createElement('a');
-            link.download = 'my-canvas.png';
-            link.href = canvas.toDataURL();
-            link.click();
+            // save current canvas to localStorage and download image
+            try{
+                const dataUrl = canvas.toDataURL();
+                localStorage.setItem('canvasContents', dataUrl);
+                let link = document.createElement('a');
+                link.download = 'my-canvas.png';
+                link.href = dataUrl;
+                link.click();
+            }catch(e){
+                console.error('Save failed', e);
+            }
         })
 
         retrieveButton.addEventListener('click',()=>{
@@ -134,7 +273,7 @@
                 let img = new Image();
                 img.src = storedCanvasContents;
                 img.onload = () => {
-                    ctx.drawImage(img,0,0);
+                    ctx.drawImage(img,0,0, canvas.clientWidth, canvas.clientHeight);
                 };
             }
         })
